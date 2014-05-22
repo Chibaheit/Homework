@@ -142,7 +142,10 @@ int CheckBrackets(const char* Source)
 /*-*-         3. 编程风格         -*-*/
 /*-*- XXX： 先检查括号匹配再调用。-*-*/
 /*-*- 返回新字符串 使用完记得Free -*-*/
-/*-*- 可选参数TYPE_KANDR TYPE_BSD -*-*/
+/*-*- 参数 TYPE_KANDR TYPE_ALLMAN -*-*/
+/*-*- FIXME: TYPE_KANDR 尚未完善。-*-*/
+/*-*- FIXME: Case 的支持尚未完善。-*-*/
+/*-*-   C语言不支持 // 单行注释。 -*-*/
 /*-*-     K&R风格：我的缩进风格   -*-*/
 /*-*-     BSD风格：左大括号换行   -*-*/
 /*-*- 操作符左右空格，逗号后空格。-*-*/
@@ -152,8 +155,140 @@ int CheckBrackets(const char* Source)
 
 char* ChangeCodingStyle(char* Source, int Type)
 {
-	/*-*- TODO -*-*/
-	return Source;
+	/*-*- TODO: 完善TYPE_KANDR -*-*/
+	int i, j, Total = -1, MultiNote = 0, LineNote = 0, String = 0, Tab = 0, Sharp = 0, Ignore = 0, Case = 0, If = 0, IfBracket = 0;
+	char* Res = (char*)malloc(sizeof(char) * (strlen(Source) * 3));
+	for (i = 0; Source[i]; ++i) {
+		if (MultiNote || LineNote || String)
+			Res[++Total] = Source[i];
+		else {
+			if (Source[i] == '/') {
+				if (Source[i + 1] == '/')
+					LineNote = 1;
+				else if (Source[i + 1] == '*')
+					MultiNote = 1;
+			}
+			if (MultiNote || LineNote || (i > 0 && Source[i - 1] == '\'' && Source[i + 1] == '\'') || (i > 1 && Source[i - 1] == '\\' && Source[i - 2] == '\'' && Source[i + 1] == '\'') || Ignore || Sharp) {
+				Res[++Total] = Source[i];
+			}
+			else {
+				switch (Source[i]) {
+					case '^': case '&': case '|':
+					case '<': case '>':
+						/* Alone */
+						if (Source[i - 1] != Source[i] && Source[i] != Source[i + 1]) {
+							if (Source[i] == '&')
+								Res[++Total] = Source[i];
+							else {
+								Res[++Total] = ' ';
+								Res[++Total] = Source[i];
+								Res[++Total] = ' ';
+							}
+						}
+						/* Double */
+						else if (Source[i - 1] == Source[i]) {
+							Res[++Total] = Source[i]; Res[++Total] = ' ';
+						}
+						else if (Source[i] == Source[i + 1]) {
+							Res[++Total] = ' '; Res[++Total] = Source[i];
+						}
+						break;
+					case '+': case '-': case '*': case '/':
+						Res[++Total] = Source[i];
+						break;
+					case '{':
+						if (Type == TYPE_KANDR)
+							Res[++Total] = ' ';
+						else if (Type == TYPE_ALLMAN) {
+							Res[++Total] = '\n';
+							for (j = 0; j < Tab; ++j)
+								Res[++Total] = '\t';
+						}
+						++Tab;
+						Res[++Total] = Source[i];
+						Res[++Total] = '\n';
+						for (j = 0; j < Tab; ++j)
+							Res[++Total] = '\t';
+						break;
+					case '}':
+						--Total;
+						--Tab;
+						Res[++Total] = Source[i];
+						Res[++Total] = '\n';
+						for (j = 0; j < Tab; ++j)
+							Res[++Total] = '\t';
+						break;
+					case 'e':
+						Res[++Total] = Source[i];
+						if (i > 2 && Source[i - 3] == 'e' && Source[i - 2] == 'l' && Source[i - 1] == 's')
+							Res[++Total] = ' ';
+						break;
+					case 'f':
+						Res[++Total] = Source[i];
+						if (i > 0 && Source[i - 1] == 'i') {
+							If = 1;
+						}
+						break;
+					case ';':
+						Res[++Total] = Source[i]; Res[++Total] = '\n';
+						if (i > 4 && Source[i - 5] == 'b' && Source[i - 4] == 'r' && Source[i - 3] == 'e' && Source[i - 2] == 'a' && Source[i - 1] == 'k' && Case) {
+							--Tab;
+							--Case;
+						}
+						for (j = 0; j < Tab; ++j)
+							Res[++Total] = '\t';
+						break;
+					case ',':
+						Res[++Total] = Source[i]; Res[++Total] = ' ';
+						break;
+					case '\t': case '\v': case '\r': case '\n':
+						break;
+					case '#':
+						Sharp = 1;
+						Res[++Total] = Source[i];
+						break;
+					default:
+						Res[++Total] = Source[i];
+						break;
+				}
+			}
+		}
+		if (Source[i] == '"' && !MultiNote && !LineNote) {
+			if (i > 0 && ((Source[i - 1] == '\'' && Source[i + 1] == '\'') || Source[i - 1] == '\\'))
+				;
+			else
+				String = !String;
+		}
+		if (!String && !MultiNote && !LineNote && !((i > 0 && Source[i - 1] == '\'' && Source[i + 1] == '\'') || (i > 1 && Source[i - 1] == '\\' && Source[i - 2] == '\'' && Source[i + 1] == '\''))) {
+			if (Source[i] == ')') {
+				--Ignore;
+				if (If) {
+					--IfBracket;
+					if (IfBracket == 0) {
+						If = 0;
+						Res[++Total] = ' ';
+					}
+				}
+			}
+			else if (Source[i] == '(') {
+				++Ignore;
+				if (If) {
+					++IfBracket;
+				}
+			}
+			else if (Source[i] == '\n') {
+				Sharp = 0;
+			}
+		}
+		if (Source[i] == '/' && Source[i - 1] == '*' && MultiNote) {
+			MultiNote = 0;
+			Res[++Total] = '\n';
+			for (j = 0; j < Tab; ++j)
+				Res[++Total] = '\t';
+		}
+	}
+	Res[++Total] = 0;
+	return Res;
 }
 
 
@@ -178,22 +313,25 @@ char* ChangeCodingStyle(char* Source, int Type)
 
 /*-*- Functions End -*-*/
 
-#ifndef _RELEASE
+#ifndef NDEBUG
 int main()
 {
-	char s[10005] = "", in[10005];
+	char s[1000005] = "", in[1000005];
 	/*-*- Debug -*-*/
-	while (scanf("%[^\n]", in) != EOF) {
+	while (gets(in)) {
 		strcat(s, in);
 		strcat(s, "\n");
 	}
+	/*puts("!!!");
 	struct StringSet Hash;
 	Init(&Hash);
 	printf("%d\n", Exist(&Hash, "123"));
 	Insert(&Hash, "123");
 	printf("%d\n", Exist(&Hash, "123"));
 	puts(RemoveNotes(s));
-	printf("%d\n", CheckBrackets(s));
+	printf("%d\n", CheckBrackets(s));*/
+	puts(ChangeCodingStyle(s, TYPE_ALLMAN));
+	/* puts(ChangeCodingStyle(s, TYPE_KANDR)); */
 	return 0;
 }
 #endif
